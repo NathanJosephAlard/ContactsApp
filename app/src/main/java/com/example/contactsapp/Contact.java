@@ -7,6 +7,10 @@ public class Contact {
     private String phone;
     private String birthday;
 
+    // Default constructor
+    public Contact() {
+    }
+
     // Constructor without id (useful for creating new contacts)
     public Contact(String name, String email, String phone, String birthday) {
         this.name = name;

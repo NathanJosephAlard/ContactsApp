@@ -3,19 +3,21 @@ import android.app.DatePickerDialog;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
-import android.widget.DatePicker;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.textfield.TextInputEditText;
 
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.Date;
+import java.util.Locale;
 
 public class ContactFormActivity extends AppCompatActivity {
     private Button birthdayButton, saveContactButton;
     private TextInputEditText nameEditText, emailEditText, phoneEditText;
-
+    private Calendar selectedDate; // This Calendar object will keep track of the selected date
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,6 +29,10 @@ public class ContactFormActivity extends AppCompatActivity {
         phoneEditText = findViewById(R.id.phone_edit_text);
         birthdayButton = findViewById(R.id.birthday_button);
         saveContactButton = findViewById(R.id.save_contact_button);
+
+        selectedDate = Calendar.getInstance(); // Initialize the calendar to the current date
+
+        updateDateDisplay(selectedDate.getTime()); // Update display with the current date
 
         birthdayButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -47,43 +53,51 @@ public class ContactFormActivity extends AppCompatActivity {
         String name = nameEditText.getText().toString().trim();
         String email = emailEditText.getText().toString().trim();
         String phone = phoneEditText.getText().toString().trim();
-        String birthday = birthdayButton.getText().toString();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault());
+        String birthday = dateFormat.format(selectedDate.getTime());
 
-        // Simple validation example
         if (name.isEmpty() || email.isEmpty() || phone.isEmpty()) {
             Toast.makeText(this, "Please fill in all fields", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Assuming you have a Contact class and a DatabaseHelper class
-        Contact newContact = new Contact(name, email, phone, birthday);
+        // Directly instantiate DatabaseHelper instead of using a singleton instance
         DatabaseHelper databaseHelper = new DatabaseHelper(this);
 
-        long id = databaseHelper.addContact(newContact);
-        if (id > 0) {
-            Toast.makeText(this, "Contact saved", Toast.LENGTH_SHORT).show();
-            finish(); // Close this activity and return to the previous one (if any)
-        } else {
-            Toast.makeText(this, "Failed to save contact", Toast.LENGTH_SHORT).show();
+        try {
+            long id = databaseHelper.addContact(new Contact(name, email, phone, birthday));
+            if (id > 0) {
+                Toast.makeText(this, "Contact saved", Toast.LENGTH_SHORT).show();
+                finish(); // Close this activity and return to the previous one
+            } else {
+                Toast.makeText(this, "Failed to save contact", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, "Error saving contact: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        } finally {
+            databaseHelper.close();  // Ensure resources are freed correctly
         }
     }
 
-    private void showDatePickerDialog() {
-        // Get current date
-        final Calendar calendar = Calendar.getInstance();
-        int year = calendar.get(Calendar.YEAR);
-        int month = calendar.get(Calendar.MONTH);
-        int day = calendar.get(Calendar.DAY_OF_MONTH);
 
-        // Create a new instance of DatePickerDialog and show it
+
+    private void showDatePickerDialog() {
+        int year = selectedDate.get(Calendar.YEAR);
+        int month = selectedDate.get(Calendar.MONTH);
+        int day = selectedDate.get(Calendar.DAY_OF_MONTH);
+
         DatePickerDialog datePickerDialog = new DatePickerDialog(this,
-                new DatePickerDialog.OnDateSetListener() {
-                    @Override
-                    public void onDateSet(DatePicker view, int year, int month, int dayOfMonth) {
-                        // Set button text to the selected date
-                        birthdayButton.setText(String.format("%d-%d-%d", year, month + 1, dayOfMonth));
-                    }
+                (view, year1, month1, dayOfMonth) -> {
+                    selectedDate.set(Calendar.YEAR, year1);
+                    selectedDate.set(Calendar.MONTH, month1);
+                    selectedDate.set(Calendar.DAY_OF_MONTH, dayOfMonth);
+                    updateDateDisplay(selectedDate.getTime());
                 }, year, month, day);
         datePickerDialog.show();
+    }
+
+    private void updateDateDisplay(Date date) {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault());
+        birthdayButton.setText(dateFormat.format(date));
     }
 }

@@ -2,157 +2,80 @@ package com.example.contactsapp;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
-import android.widget.SearchView;
-
-import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.List;
 import java.util.ArrayList;
-import java.util.Locale;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
+    private static final int REQUEST_CODE_ADD_CONTACT = 1; // Request code for adding/editing a contact
+
     private RecyclerView recyclerView;
     private ContactsAdapter contactsAdapter;
     private List<Contact> contactList;
-    private List<Contact> filteredList;
     private DatabaseHelper databaseHelper;
-    private SearchView searchView;
+    private FloatingActionButton fabAddContact;
+    private ExecutorService executorService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
-
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
 
         recyclerView = findViewById(R.id.recyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        databaseHelper = new DatabaseHelper(this);
         contactList = new ArrayList<>();
-
-        loadContacts();
-
-        contactsAdapter = new ContactsAdapter(this, filteredList);
+        contactsAdapter = new ContactsAdapter(this, contactList);
         recyclerView.setAdapter(contactsAdapter);
 
-        FloatingActionButton fab = findViewById(R.id.fab_add_contact);
-        fab.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(MainActivity.this, ContactFormActivity.class);
-                startActivity(intent);
-            }
+        databaseHelper = new DatabaseHelper(this);
+        executorService = Executors.newSingleThreadExecutor();
+
+        fabAddContact = findViewById(R.id.fab_add_contact);
+        fabAddContact.setOnClickListener(view -> {
+            Intent intent = new Intent(MainActivity.this, ContactFormActivity.class);
+            startActivityForResult(intent, REQUEST_CODE_ADD_CONTACT);
         });
 
-        searchView = findViewById(R.id.contact_search_view);
-        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
-            @Override
-            public boolean onQueryTextSubmit(String query) {
-                return false;
-            }
-
-            @Override
-            public boolean onQueryTextChange(String newText) {
-                filterContacts(newText);
-                return true;
-            }
-        });
+        loadContacts();
     }
 
     private void loadContacts() {
-        contactList.clear();
-        contactList.addAll(databaseHelper.getAllContacts());
-        contactsAdapter.notifyDataSetChanged();
-    }
-
-    private void filterContacts(String query) {
-        if (filteredList == null) {
-            filteredList = new ArrayList<>(); // Ensure it's initialized
-        }
-
-        filteredList.clear(); // Clear the filtered list before starting the search
-        if (query.isEmpty()) {
-            filteredList.addAll(contactList); // No search term, add all contacts
-        } else {
-            query = query.toLowerCase(); // Convert search term to lower case for case-insensitive comparison
-            for (Contact contact: contactList) {
-                // Check if the contact's name contains the search term
-                if (contact.getName().toLowerCase().contains(query)) {
-                    filteredList.add(contact); // It's a match, add it to the filtered list
-                }
-            }
-        }
-
-        contactList.addAll(filteredList);
-        contactsAdapter.notifyDataSetChanged();
-    }
-
-    private void sortContacts(String sortBy) {
-        if (sortBy.equals("Name")) {
-            Collections.sort(filteredList, new Comparator<Contact>() {
-                @Override
-                public int compare(Contact c1, Contact c2) {
-                    return c1.getName().compareToIgnoreCase(c2.getName());
-                }
+        executorService.execute(() -> {
+            List<Contact> contacts = databaseHelper.getAllContacts();
+            new Handler(Looper.getMainLooper()).post(() -> {
+                contactList.clear();
+                contactList.addAll(contacts);
+                contactsAdapter.notifyDataSetChanged();
             });
-        } else if (sortBy.equals("Birthday")) {
-            Collections.sort(filteredList, new Comparator<Contact>() {
-                @Override
-                public int compare(Contact c1, Contact c2) {
-                    SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault());
-                    try {
-                        Date date1 = format.parse(c1.getBirthday());
-                        Date date2 = format.parse(c2.getBirthday());
-                        return date1.compareTo(date2);
-                    } catch (ParseException e) {
-                        e.printStackTrace();
-                        return 0;
-                    }
-                }
-            });
-        }
-
-        // This is the crucial part: updating the adapter with the now-sorted list
-       updateList(filteredList);
+        });
     }
 
-    public void updateList(List<Contact> newList) {
-        contactList.addAll(newList);
-        contactsAdapter.notifyDataSetChanged();
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_CODE_ADD_CONTACT && resultCode == RESULT_OK) {
+            loadContacts();  // Reload contacts if a new contact was added or an existing one was updated
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // Refresh the contact list
-        contactList.clear();
-        contactList.addAll(databaseHelper.getAllContacts());
-        contactsAdapter.notifyDataSetChanged();
+        loadContacts();  // Ensure the latest contacts are displayed
     }
 
     @Override
     protected void onDestroy() {
-        databaseHelper.close();
         super.onDestroy();
+        executorService.shutdown();  // Shutdown the executor service to avoid memory leaks
     }
 }
